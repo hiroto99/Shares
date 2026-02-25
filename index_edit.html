@@ -138,95 +138,76 @@
 
 		<script>
 			(function() {
-				const WIDGET_ID = 'stripe-charge-widget-fixed';
+				const WIDGET_ID = 'stripe-isolated-widget';
+				const STRIPE_URL = "https://buy.stripe.com";
 
-				function createWidget() {
+				// 1. ウィジェットの生成と「最上位階層」への注入
+				function ensureWidget() {
 					if (document.getElementById(WIDGET_ID)) return;
 
-					const widget = document.createElement('div');
-					widget.id = WIDGET_ID;
-				
-					// CSSを極限まで強力に（!importantの嵐）
-					widget.style.cssText = `
-						position: fixed !important;
-						bottom: 30px !important;
-						right: 30px !important;
-						width: 220px !important;
-						height: auto !important;
-						z-index: 2147483647 !important;
-						display: block !important;
-						visibility: visible !important;
-						opacity: 1 !important;
-						background: #171717 !important;
-						border: 1px solid #333 !important;
-						border-radius: 16px !important;
-						padding: 20px !important;
-						box-shadow: 0 10px 40px rgba(0,0,0,0.8) !important;
-						color: #fff !important;
-						font-family: 'Inter', system-ui, sans-serif !important;
-						pointer-events: auto !important;
+					const w = document.createElement('div');
+					w.id = WIDGET_ID;
+					
+					// 💡 解決の鍵：bodyではなくhtml直下(documentElement)に追加して隔離する
+					document.documentElement.appendChild(w);
+
+					// 最前面に固定するスタイル（!importantで上書きを許さない）
+					w.style.cssText = `
+						position: fixed !important; bottom: 30px !important; right: 30px !important; 
+						z-index: 2147483647 !important; background: #111 !important; 
+						border: 1px solid #444 !important; border-radius: 16px !important; 
+						padding: 20px !important; box-shadow: 0 10px 40px rgba(0,0,0,0.8) !important; 
+						color: #fff !important; min-width: 200px !important; font-family: sans-serif !important;
+						display: block !important; visibility: visible !important;
 					`;
 
-					widget.innerHTML = `
-						<div style="font-size: 10px; color: #888; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 1px;">Credit Balance</div>
-						<div id="val-display" style="font-size: 28px; font-weight: 800; color: #3b82f6; margin-bottom: 15px; line-height: 1;">0 c</div>
-        				<button id="real-charge-btn" style="cursor:pointer!important;display:block!important;width:100%!important;background:#3b82f6!important;color:white!important;padding:12px 0!important;border-radius:10px!important;border:none!important;font-size:14px!important;font-weight:700;">チャージする</button>
+					w.innerHTML = `
+						<div style="font-size:10px;color:#888;text-transform:uppercase;margin-bottom:6px;pointer-events:none;">Credit Balance</div>
+						<div id="credits-val-display" style="font-size:30px;font-weight:800;color:#3b82f6;margin-bottom:16px;line-height:1;pointer-events:none;">-- c</div>
+						<button id="btn-stripe-direct" style="cursor:pointer!important;display:block!important;width:100%!important;background:#3b82f6!important;color:white!important;padding:12px 0!important;border-radius:10px!important;border:none!important;font-size:14px!important;font-weight:700;">チャージする</button>
 					`;
 
-					// 💡 解決の鍵：bodyではなくhtml(最上位)に直接追加する
-					document.documentElement.appendChild(widget);
-
-					// 💡 ここが重要：ボタンが現れるたびに、JS側からイベントを「addEventListener」で登録する
-					const btn = document.getElementById('real-charge-btn');
+					// 💡 ボタンの動作を直接メモリ上で紐付ける（aタグやonclick属性を使わない）
+					const btn = document.getElementById('btn-stripe-direct');
 					if (btn) {
-						// 二重登録防止のため一度クリアしてから登録
-						btn.onclick = null; 
-						btn.onclick = function(e) {
+						btn.onclick = (e) => {
 							e.preventDefault();
-							e.stopPropagation();
-							const url = `${STRIPE_URL}?client_reference_id=${user.id}&prefilled_email=${encodeURIComponent(user.email || '')}`;
-							console.log("Stripe Redirect:", url);
-							window.open(url, '_blank');
+							window.open(checkout, '_blank');
 						};
 					}
 				}
 
-				// 0.5秒おきに「存在チェック」と「データ更新」を同時に行う（超攻撃的アプローチ）
-				setInterval(() => {
-				createWidget();
-				}, 500);
-
-				createWidget();
-			})();
-		</script>
-
-		<script>
-			(function() {
-				const STRIPE_URL = "https://buy.stripe.com";
+				// 2. データの同期とクリックイベントの付与
 				function syncData() {
 					try {
 						const user = JSON.parse(localStorage.getItem('user') || '{}');
 						if (!user.id) return;
 
-						// クレジット表示更新
+						// 残高の更新
 						const c = (user.info?.usage?.credits) ?? (user.info?.credits) ?? (user.credits) ?? 0;
-						const valEl = document.getElementById('credits-val');
+						const valEl = document.getElementById('credits-val-display');
 						if (valEl) valEl.innerText = c + " c";
 
-						// ボタンのクリックイベントをJSで直接制御（aタグの干渉を回避）
-						const btn = document.getElementById('btn-stripe-pay');
+						// ボタン動作の付与（onclick属性ではなく、メモリ上で直接紐付ける）
+						const btn = document.getElementById('btn-stripe-direct');
 						if (btn) {
-							btn.onclick = function() {
+							btn.onclick = function(e) {
+								e.preventDefault();
 								const checkoutUrl = `${STRIPE_URL}?client_reference_id=${user.id}&prefilled_email=${encodeURIComponent(user.email || '')}`;
-								// 別タブで確実に開く
+								console.log("Stripe Redirect:", checkoutUrl);
 								window.open(checkoutUrl, '_blank');
 							};
 						}
-					} catch (e) {
-						console.error("Sync error:", e);
-					}
+					} catch (e) { console.error("Widget sync error:", e); }
 				}
-				setInterval(syncData, 1000); // 1秒ごとにデータ同期
+
+				// 0.5秒おきに「存在確認」と「データ同期」を並行して回す
+				setInterval(() => {
+					ensureWidget();
+					syncData();
+				}, 500);
+
+				ensureWidget();
 				syncData();
 			})();
 		</script>
