@@ -127,8 +127,11 @@
 			<div style="background: #171717; border: 1px solid #333; border-radius: 12px; padding: 16px; box-shadow: 0 8px 30px rgba(0,0,0,0.7); color: #ececec; min-width: 200px;">
 				<div style="font-size: 11px; color: #9a9a9a; margin-bottom: 4px; letter-spacing: 0.05em; text-transform: uppercase;">Current Credits</div>
 				<div id="user-credits-val" style="font-size: 24px; font-weight: 700; color: #3b82f6; margin-bottom: 12px;">0 c</div>
-				<button id="stripe-charge-link" href="#" target="_blank" style="display: block; text-align: center; background: #3b82f6; color: white; padding: 10px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 600; transition: background 0.2s;">
-					クレジットをチャージ
+				<!-- 修正後：onclickを直接HTMLに記述し、JSが剥がれるのを防ぐ -->
+				<button id="charge-btn-link" 
+					onclick="const u=JSON.parse(localStorage.getItem('user')||'{}'); if(u.id){window.open('https://buy.stripe.com/test_eVq7sNgH637d1NFefc2Ji00?client_reference_id=' + u.id + '&prefilled_email=' + encodeURIComponent(u.email || ''), '_blank')}"
+						style="display: block; width: 100%; text-align: center; background: #3b82f6; color: white; padding: 12px 0; border-radius: 10px; border: none; cursor: pointer; font-size: 14px; font-weight: 700; transition: transform 0.1s;">
+					チャージする
 				</button>
 			</div>
 		</div>
@@ -167,11 +170,25 @@
 					widget.innerHTML = `
 						<div style="font-size: 10px; color: #888; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 1px;">Credit Balance</div>
 						<div id="val-display" style="font-size: 28px; font-weight: 800; color: #3b82f6; margin-bottom: 15px; line-height: 1;">0 c</div>
- 						<button id="btn-stripe-pay" style="cursor:pointer!important;display:block!important;width:100%!important;text-align:center!important;background:#3b82f6!important;color:white!important;padding:12px 0!important;border-radius:10px!important;border:none!important;font-size:14px!important;font-weight:700;">チャージする</button>
+        				<button id="real-charge-btn" style="cursor:pointer!important;display:block!important;width:100%!important;background:#3b82f6!important;color:white!important;padding:12px 0!important;border-radius:10px!important;border:none!important;font-size:14px!important;font-weight:700;">チャージする</button>
 					`;
 
 					// 💡 解決の鍵：bodyではなくhtml(最上位)に直接追加する
 					document.documentElement.appendChild(widget);
+
+					// 💡 ここが重要：ボタンが現れるたびに、JS側からイベントを「addEventListener」で登録する
+					const btn = document.getElementById('real-charge-btn');
+					if (btn) {
+						// 二重登録防止のため一度クリアしてから登録
+						btn.onclick = null; 
+						btn.onclick = function(e) {
+							e.preventDefault();
+							e.stopPropagation();
+							const url = `${STRIPE_URL}?client_reference_id=${user.id}&prefilled_email=${encodeURIComponent(user.email || '')}`;
+							console.log("Stripe Redirect:", url);
+							window.open(url, '_blank');
+						};
+					}
 				}
 
 				// 0.5秒おきに「存在チェック」と「データ更新」を同時に行う（超攻撃的アプローチ）
