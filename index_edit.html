@@ -122,97 +122,6 @@
 	</head>
 
 	<body data-sveltekit-preload-data="hover">
-		<!-- hiroto99.com クレジットウィジェット開始 -->
-		<div id="charge-widget" style="position: fixed !important; bottom: 20px !important; right: 20px !important; z-index: 999999 !important; display: none; font-family: 'Inter', sans-serif;">
-			<div style="background: #171717; border: 1px solid #333; border-radius: 12px; padding: 16px; box-shadow: 0 8px 30px rgba(0,0,0,0.7); color: #ececec; min-width: 200px;">
-				<div style="font-size: 11px; color: #9a9a9a; margin-bottom: 4px; letter-spacing: 0.05em; text-transform: uppercase;">Current Credits</div>
-				<div id="user-credits-val" style="font-size: 24px; font-weight: 700; color: #3b82f6; margin-bottom: 12px;">0 c</div>
-				<!-- 修正後：onclickを直接HTMLに記述し、JSが剥がれるのを防ぐ -->
-				<button id="charge-btn-link" 
-					onclick="const u=JSON.parse(localStorage.getItem('user')||'{}'); if(u.id){window.open('https://buy.stripe.com/test_eVq7sNgH637d1NFefc2Ji00?client_reference_id=' + u.id + '&prefilled_email=' + encodeURIComponent(u.email || ''), '_blank')}"
-						style="display: block; width: 100%; text-align: center; background: #3b82f6; color: white; padding: 12px 0; border-radius: 10px; border: none; cursor: pointer; font-size: 14px; font-weight: 700; transition: transform 0.1s;">
-					チャージする
-				</button>
-			</div>
-		</div>
-
-		<script>
-			(function() {
-				const WIDGET_ID = 'stripe-isolated-widget';
-				const STRIPE_URL = "https://buy.stripe.com";
-
-				// 1. ウィジェットの生成と「最上位階層」への注入
-				function ensureWidget() {
-					if (document.getElementById(WIDGET_ID)) return;
-
-					const w = document.createElement('div');
-					w.id = WIDGET_ID;
-					
-					// 💡 解決の鍵：bodyではなくhtml直下(documentElement)に追加して隔離する
-					document.documentElement.appendChild(w);
-
-					// 最前面に固定するスタイル（!importantで上書きを許さない）
-					w.style.cssText = `
-						position: fixed !important; bottom: 30px !important; right: 30px !important; 
-						z-index: 2147483647 !important; background: #111 !important; 
-						border: 1px solid #444 !important; border-radius: 16px !important; 
-						padding: 20px !important; box-shadow: 0 10px 40px rgba(0,0,0,0.8) !important; 
-						color: #fff !important; min-width: 200px !important; font-family: sans-serif !important;
-						display: block !important; visibility: visible !important;
-					`;
-
-					w.innerHTML = `
-						<div style="font-size:10px;color:#888;text-transform:uppercase;margin-bottom:6px;pointer-events:none;">Credit Balance</div>
-						<div id="credits-val-display" style="font-size:30px;font-weight:800;color:#3b82f6;margin-bottom:16px;line-height:1;pointer-events:none;">-- c</div>
-						<button id="btn-stripe-direct" style="cursor:pointer!important;display:block!important;width:100%!important;background:#3b82f6!important;color:white!important;padding:12px 0!important;border-radius:10px!important;border:none!important;font-size:14px!important;font-weight:700;">チャージする</button>
-					`;
-
-					// 💡 ボタンの動作を直接メモリ上で紐付ける（aタグやonclick属性を使わない）
-					const btn = document.getElementById('btn-stripe-direct');
-					if (btn) {
-						btn.onclick = (e) => {
-							e.preventDefault();
-							window.open(checkout, '_blank');
-						};
-					}
-				}
-
-				// 2. データの同期とクリックイベントの付与
-				function syncData() {
-					try {
-						const user = JSON.parse(localStorage.getItem('user') || '{}');
-						if (!user.id) return;
-
-						// 残高の更新
-						const c = (user.info?.usage?.credits) ?? (user.info?.credits) ?? (user.credits) ?? 0;
-						const valEl = document.getElementById('credits-val-display');
-						if (valEl) valEl.innerText = c + " c";
-
-						// ボタン動作の付与（onclick属性ではなく、メモリ上で直接紐付ける）
-						const btn = document.getElementById('btn-stripe-direct');
-						if (btn) {
-							btn.onclick = function(e) {
-								e.preventDefault();
-								const checkoutUrl = `${STRIPE_URL}?client_reference_id=${user.id}&prefilled_email=${encodeURIComponent(user.email || '')}`;
-								console.log("Stripe Redirect:", checkoutUrl);
-								window.open(checkoutUrl, '_blank');
-							};
-						}
-					} catch (e) { console.error("Widget sync error:", e); }
-				}
-
-				// 0.5秒おきに「存在確認」と「データ同期」を並行して回す
-				setInterval(() => {
-					ensureWidget();
-					syncData();
-				}, 500);
-
-				ensureWidget();
-				syncData();
-			})();
-		</script>
-		<!-- hiroto99.com クレジットウィジェット終了 -->
-		
 		<div style="display: contents">
 			<script>
 				{
@@ -294,6 +203,57 @@
 				Footer content
 			</span> -->
 		</div>
+		<!-- hiroto99.com クレジットウィジェット開始 -->
+		<!-- 1. 物理的なHTML要素（最初から表示させておく） -->
+		<div id="final-widget-fixed" style="position: fixed !important; bottom: 30px !important; right: 30px !important; z-index: 2147483647 !important; background: #111 !important; border: 1px solid #333 !important; border-radius: 16px !important; padding: 20px !important; box-shadow: 0 10px 40px rgba(0,0,0,0.8) !important; color: #fff !important; min-width: 200px !important; font-family: sans-serif !important; display: block !important;">
+			<div style="font-size: 10px; color: #888; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 1px;">Credit Balance</div>
+			<div id="final-credits-display" style="font-size: 28px; font-weight: 800; color: #3b82f6; margin-bottom: 15px; line-height: 1;">-- c</div>
+			<button id="final-charge-btn" style="cursor: pointer !important; display: block !important; width: 100% !important; text-align: center !important; background: #3b82f6 !important; color: white !important; padding: 12px 0 !important; border-radius: 10px !important; border: none !important; font-size: 14px !important; font-weight: 700;">チャージする</button>
+		</div>
+
+		<!-- 2. 表示を強制維持するスクリプト -->
+		<script>
+			(function() {
+				const W_ID = 'final-widget-fixed';
+				const S_URL = "https://buy.stripe.com/test_eVq7sNgH637d1NFefc2Ji00";
+
+				function refresh() {
+					const widget = document.getElementById(W_ID);
+					if (!widget) return;
+
+					// 💡 隔離：常に最上位へ移動
+					if (widget.parentElement !== document.documentElement) {
+						document.documentElement.appendChild(widget);
+					}
+					widget.style.setProperty('display', 'block', 'important');
+
+					try {
+						const token = localStorage.getItem('token');
+						if (!token) return; // ログイン前なら数値だけ -- c のまま
+
+						const user = JSON.parse(atob(token.split('.')[1]));
+						const userObj = user ? JSON.parse(user) : {};
+						let credits = 0;
+						if (userObj.info) {
+							credits = userObj.info.usage?.credits ?? userObj.info.credits ?? 0;
+						} else {
+							credits = userObj.credits ?? 0;
+						}
+						document.getElementById('final-credits-display').innerText = credits + " c";
+
+						document.getElementById('final-charge-btn').onclick = function() {
+						const url = S_URL + "?client_reference_id=" + user.id + "&prefilled_email=" + encodeURIComponent(user.email || '');
+						window.open(url, '_blank');
+						};
+					} catch (e) { console.error("Update Error:", e); }
+				}
+
+				// 0.5秒おきに監視と更新
+				setInterval(refresh, 500);
+				refresh();
+			})();
+		</script>
+		<!-- hiroto99.com クレジットウィジェット終了 -->
 	</body>
 
 	<style type="text/css" nonce="">
