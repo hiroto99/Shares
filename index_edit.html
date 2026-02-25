@@ -122,47 +122,93 @@
 	</head>
 
 	<body data-sveltekit-preload-data="hover">
-		<!-- クレジット表示とチャージボタンを画面右下に固定表示するスクリプト -->
-		<div id="charge-widget" style="position: fixed; bottom: 20px; right: 20px; z-index: 9999; display: none;">
-			<div style="background: #171717; border: 1px solid #444; border-radius: 12px; padding: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); color: white; min-width: 180px;">
-				<div style="font-size: 12px; color: #888; margin-bottom: 5px;">クレジット残高</div>
-				<div id="user-credits" style="font-size: 20px; font-weight: bold; color: #3b82f6; margin-bottom: 10px;">-- c</div>
-				<a id="stripe-charge-btn" href="#" target="_blank" style="display: block; text-align: center; background: #3b82f6; color: white; padding: 8px; border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: bold;">
-				チャージする
+		<!-- hiroto99.com クレジットウィジェット開始 -->
+		<div id="charge-widget" style="position: fixed !important; bottom: 20px !important; right: 20px !important; z-index: 999999 !important; display: none; font-family: 'Inter', sans-serif;">
+			<div style="background: #171717; border: 1px solid #333; border-radius: 12px; padding: 16px; box-shadow: 0 8px 30px rgba(0,0,0,0.7); color: #ececec; min-width: 200px;">
+				<div style="font-size: 11px; color: #9a9a9a; margin-bottom: 4px; letter-spacing: 0.05em; text-transform: uppercase;">Current Credits</div>
+				<div id="user-credits-val" style="font-size: 24px; font-weight: 700; color: #3b82f6; margin-bottom: 12px;">0 c</div>
+				<a id="stripe-charge-link" href="#" target="_blank" style="display: block; text-align: center; background: #3b82f6; color: white; padding: 10px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 600; transition: background 0.2s;">
+					クレジットをチャージ
 				</a>
 			</div>
 		</div>
-		
+
 		<script>
 			(function() {
-				function refreshUserStatus() {
-				const token = localStorage.getItem('token');
-				const userStr = localStorage.getItem('user');
-				if (!token || !userStr) return;
+				const WIDGET_ID = 'stripe-charge-widget-fixed';
 
-				try {
-					const user = JSON.parse(userStr);
-					const credits = user?.info?.usage?.credits ?? 0;
-					
-					// 1. 残高を表示
-					document.getElementById('user-credits').innerText = credits + " c";
-					
-					// 2. StripeリンクにIDとメアドを自動埋め込み
-					const baseUrl = "https://buy.stripe.com";
-					const chargeBtn = document.getElementById('stripe-charge-btn');
-					chargeBtn.href = `${baseUrl}?client_reference_id=${user.id}&prefilled_email=${encodeURIComponent(user.email)}`;
-					
-					// 3. ウィジェットを表示
-					document.getElementById('charge-widget').style.display = 'block';
-				} catch (e) { console.error("Charge widget error:", e); }
+				function createWidget() {
+					if (document.getElementById(WIDGET_ID)) return;
+
+					const widget = document.createElement('div');
+					widget.id = WIDGET_ID;
+				
+					// CSSを極限まで強力に（!importantの嵐）
+					widget.style.cssText = `
+						position: fixed !important;
+						bottom: 30px !important;
+						right: 30px !important;
+						width: 220px !important;
+						height: auto !important;
+						z-index: 2147483647 !important;
+						display: block !important;
+						visibility: visible !important;
+						opacity: 1 !important;
+						background: #171717 !important;
+						border: 1px solid #333 !important;
+						border-radius: 16px !important;
+						padding: 20px !important;
+						box-shadow: 0 10px 40px rgba(0,0,0,0.8) !important;
+						color: #fff !important;
+						font-family: 'Inter', system-ui, sans-serif !important;
+						pointer-events: auto !important;
+					`;
+
+					widget.innerHTML = `
+						<div style="font-size: 10px; color: #888; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 1px;">Credit Balance</div>
+						<div id="val-display" style="font-size: 28px; font-weight: 800; color: #3b82f6; margin-bottom: 15px; line-height: 1;">0 c</div>
+						<a id="charge-btn-link" href="#" target="_blank" style="display: block; width: 100%; text-align: center; background: #3b82f6; color: white; padding: 12px 0; border-radius: 10px; text-decoration: none; font-size: 14px; font-weight: 700; transition: transform 0.1s;">チャージする</a>
+					`;
+
+					// 💡 解決の鍵：bodyではなくhtml(最上位)に直接追加する
+					document.documentElement.appendChild(widget);
 				}
 
-				// 起動時と一定間隔で更新（反映を早めるため）
-				setTimeout(refreshUserStatus, 1000);
-				setInterval(refreshUserStatus, 5000);
+				// 0.5秒おきに「存在チェック」と「データ更新」を同時に行う（超攻撃的アプローチ）
+				setInterval(() => {
+				createWidget();
+				}, 500);
+
+				createWidget();
 			})();
 		</script>
 
+		<script>
+			(function() {
+				const STRIPE_URL = "https://buy.stripe.com";
+				function syncData() {
+					try {
+						const user = JSON.parse(localStorage.getItem('user') || '{}');
+						if (!user.id) return;
+
+						// 1. 数値の更新
+						const c = (user.info?.usage?.credits) ?? (user.info?.credits) ?? (user.credits) ?? 0;
+						const valEl = document.getElementById('credits-val');
+						if (valEl) valEl.innerText = c + " c";
+
+						// 2. ボタン動作の更新
+						const btn = document.getElementById('btn-stripe');
+						if (btn) {
+							btn.onclick = () => window.open(`${STRIPE_URL}?client_reference_id=${user.id}&prefilled_email=${encodeURIComponent(user.email || '')}`, '_blank');
+						}
+					} catch (e) { console.error("Sync error:", e); }
+				}
+				setInterval(syncData, 1000); // 1秒ごとにデータ同期
+				syncData();
+			})();
+		</script>
+		<!-- hiroto99.com クレジットウィジェット終了 -->
+		
 		<div style="display: contents">
 			<script>
 				{
@@ -313,17 +359,4 @@
 			animation: pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 		}
 	</style>
-
-	<script>
-		window.addEventListener('load', function() {
-			setTimeout(function() {
-			// さきほど書いた refreshUserStatus() の中身を実行
-			const userStr = localStorage.getItem('user');
-			if (userStr) {
-				document.getElementById('charge-widget').style.setProperty('display', 'block', 'important');
-				// ... (以下、URL生成ロジック)
-			}
-			}, 3000); // 3秒待ってから表示
-		});
-	</script>
 </html>
