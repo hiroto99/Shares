@@ -216,8 +216,9 @@
 			(function() {
 				const W_ID = 'final-widget-fixed';
 				const S_URL = "https://buy.stripe.com/test_eVq7sNgH637d1NFefc2Ji00";
+				const API_URL = "https://n8n.hiroto99.com/webhook/get-user-credits"; // 💡クレジット取得用API
 
-				function refresh() {
+				async function refresh() {
 					const widget = document.getElementById(W_ID);
 					if (!widget) return;
 
@@ -231,19 +232,29 @@
 						const token = localStorage.getItem('token');
 						if (!token) return; // ログイン前なら数値だけ -- c のまま
 
+						// 1. トークン(JWT)をデコードしてIDを取得
 						const user = JSON.parse(atob(token.split('.')[1]));
-						const userObj = user ? JSON.parse(user) : {};
-						let credits = 0;
-						if (userObj.info) {
-							credits = userObj.info.usage?.credits ?? userObj.info.credits ?? 0;
-						} else {
-							credits = userObj.credits ?? 0;
-						}
-						document.getElementById('final-credits-display').innerText = credits + " c";
+						const userId = user.id;
+
+						// 2. Python API から最新の残高を取得（localStorageに頼らない）
+						const response = await fetch(API_URL, {
+							method: 'POST',
+							headers: { 'Content-Type': 'application/json' },
+							body: JSON.stringify({ user_id: userId })
+						});
+						if (!response.ok) throw new Error('API Response Error');
+						const data = await response.json();
+						const credits = data.credits || 0;
+
+						// 3. 表示の更新
+						const displayEl = document.getElementById('final-credits-display');
+						if (displayEl) displayEl.innerText = credits + " c";
 
 						document.getElementById('final-charge-btn').onclick = function() {
-						const url = S_URL + "?client_reference_id=" + user.id + "&prefilled_email=" + encodeURIComponent(user.email || '');
-						window.open(url, '_blank');
+							// トークンから取得した正確なIDを使用
+							const url = S_URL + "?client_reference_id=" + userId;
+							console.log("Stripe Redirecting:", url);
+							window.open(url, '_blank');
 						};
 					} catch (e) { console.error("Update Error:", e); }
 				}
