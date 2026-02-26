@@ -204,19 +204,42 @@
 			</span> -->
 		</div>
 		<!-- hiroto99.com クレジットウィジェット開始 -->
-		<!-- 1. 物理的なHTML要素（最初から表示させておく） -->
+		<!-- 1. 料金プラン用モーダル -->
+		<div id="pricing-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 2147483647; align-items: center; justify-content: center;">
+			<div style="background: #171717; padding: 30px; border-radius: 20px; width: 90%; max-width: 900px; position: relative; border: 1px solid #333;">
+				<button onclick="document.getElementById('pricing-modal').style.display='none'" style="position: absolute; top: 15px; right: 15px; background: none; border: none; color: #888; font-size: 24px; cursor: pointer;">&times;</button>
+				<h2 style="color: white; text-align: center; margin-bottom: 20px;">チャージプランを選択</h2>
+				
+				<!-- 💡 ここにStripeからコピーした埋め込みコードを貼ります -->
+				<script async src="https://js.stripe.com/v3/buy-button.js"></script>
+
+				<!-- 2. Stripeの100クレジット購入ボタン -->
+				<stripe-buy-button
+				id="pricing-table"
+				buy-button-id="buy_btn_1T2BtaRl2ex7Wx2FrLHUoFzh"
+				publishable-key="pk_test_51T24k3Rl2ex7Wx2FrPYgvfQXXHWzPjS75Mtvhc6pqJWtMtAL43aSqf6UKoMAF7MEISGVHqnBQ6a6y6BxKIeMpaGA002VQBaiHD">
+				</stripe-buy-button>
+				<!-- 3. Stripeの200クレジット購入ボタン -->
+				<stripe-buy-button
+				id="pricing-table"
+				buy-button-id="buy_btn_1T4uBNRl2ex7Wx2F4Hs1EWyy"
+				publishable-key="pk_test_51T24k3Rl2ex7Wx2FrPYgvfQXXHWzPjS75Mtvhc6pqJWtMtAL43aSqf6UKoMAF7MEISGVHqnBQ6a6y6BxKIeMpaGA002VQBaiHD">
+				</stripe-buy-button>
+			</div>
+		</div>
+		<!-- 2. 物理的なクレジット表示ウィジェット（最初から表示させておく） -->
 		<div id="final-widget-fixed" style="position: fixed !important; bottom: 30px !important; right: 30px !important; z-index: 2147483647 !important; background: #111 !important; border: 1px solid #333 !important; border-radius: 16px !important; padding: 20px !important; box-shadow: 0 10px 40px rgba(0,0,0,0.8) !important; color: #fff !important; min-width: 200px !important; font-family: sans-serif !important; display: block !important;">
 			<div style="font-size: 10px; color: #888; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 1px;">Credit Balance</div>
 			<div id="final-credits-display" style="font-size: 28px; font-weight: 800; color: #3b82f6; margin-bottom: 15px; line-height: 1;">-- c</div>
 			<button id="final-charge-btn" style="cursor: pointer !important; display: block !important; width: 100% !important; text-align: center !important; background: #3b82f6 !important; color: white !important; padding: 12px 0 !important; border-radius: 10px !important; border: none !important; font-size: 14px !important; font-weight: 700;">チャージする</button>
 		</div>
 
-		<!-- 2. 表示を強制維持するスクリプト -->
+		<!-- 3. 表示を強制維持するスクリプト -->
 		<script>
 			(function() {
 				const W_ID = 'final-widget-fixed';
 				const S_URL = "https://buy.stripe.com/test_eVq7sNgH637d1NFefc2Ji00";
-				const API_URL = "https://n8n.hiroto99.com/webhook/get-user-credits"; // 💡クレジット取得用API
+				const API_URL = "https://n8n.hiroto99.com/webhook/a1e74358-e322-4805-ae83-84e611115199"; // 💡クレジット取得用API
 
 				async function refresh() {
 					const widget = document.getElementById(W_ID);
@@ -244,17 +267,39 @@
 						});
 						if (!response.ok) throw new Error('API Response Error');
 						const data = await response.json();
-						const credits = data.credits || 0;
+						
+						// 💡 n8nの配列形式 [ { "credits": 700 } ] に対応させる
+						const credits = (Array.isArray(data) && data[0]) ? data[0].credits : (data.credits || 0);
 
 						// 3. 表示の更新
 						const displayEl = document.getElementById('final-credits-display');
 						if (displayEl) displayEl.innerText = credits + " c";
 
 						document.getElementById('final-charge-btn').onclick = function() {
-							// トークンから取得した正確なIDを使用
-							const url = S_URL + "?client_reference_id=" + userId;
-							console.log("Stripe Redirecting:", url);
-							window.open(url, '_blank');
+							// 4. Stripeの料金表にIDを流し込む（重要：これで誰の決済か判別する）
+							const table = document.getElementById('my-stripe-table');
+							if (table) {
+								table.setAttribute('client-reference-id', userId);
+							}
+
+							// 5. Stripe料金表タグを取得し、client-reference-id を動的に付与
+							const pricingTable = document.getElementById('pricing-table');
+							if (pricingTable) {
+								// ここで ID をセット！ Stripe側はこの属性を自動で読み取ります
+								pricingTable.setAttribute('client-reference-id', userId);
+								
+								// オプション：メールアドレスも自動入力させたい場合
+								const userStr = localStorage.getItem('user');
+								if (userStr) {
+									const userObj = (typeof userStr === 'string') ? JSON.parse(userStr) : userStr;
+									if (userObj.email) {
+										pricingTable.setAttribute('customer-email', userObj.email);
+									}
+								}
+							}
+
+							// 6. モーダルをふわっと表示
+							document.getElementById('pricing-modal').style.display = 'flex';
 						};
 					} catch (e) { console.error("Update Error:", e); }
 				}
