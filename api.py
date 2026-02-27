@@ -92,6 +92,45 @@ def get_credits():
     except Exception as e:
         print(f"❌ Get Credits Error: {str(e)}")
         return jsonify({"credits": 0, "error": str(e)}), 500
+    
+@app.route('/consume_credits', methods=['POST'])
+def consume_credits():
+    data = request.json
+    user_id = data.get('user_id')
+    # 💡 強制的に数値(int)に変換する
+    try:
+        amount = int(data.get('amount', 1))
+    except (ValueError, TypeError):
+        amount = 1
+
+    try:
+        conn = sqlite3.connect(DB_PATH, timeout=30)
+        cursor = conn.cursor()
+        cursor.execute("SELECT info FROM user WHERE id = ?", (user_id,))
+        result = cursor.fetchone()
+
+        if not result or not result[0]:
+            return jsonify({"status": "error", "message": "User not found"}), 404
+
+        info = json.loads(result[0])
+        if "usage" not in info: info["usage"] = {}
+        
+        current = info["usage"].get("credits", 0)
+        
+        # 減算処理
+        new_total = current - amount
+        info["usage"]["credits"] = max(0, new_total) # 0以下にならないようにガード
+        info["credits"] = max(0, new_total)
+
+        cursor.execute("UPDATE user SET info = ? WHERE id = ?", (json.dumps(info), user_id))
+        conn.commit()
+        conn.close()
+
+        print(f"📉 Consumed: {user_id} -{amount}c. New Total: {new_total}")
+        return jsonify({"status": "success", "new_total": new_total}), 200
+    except Exception as e:
+        print(f"❌ Consume Error: {str(e)}")
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5001)
