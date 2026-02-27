@@ -227,11 +227,26 @@
 				</stripe-buy-button>
 			</div>
 		</div>
-		<!-- 2. 物理的なクレジット表示ウィジェット（最初から表示させておく） -->
-		<div id="final-widget-fixed" style="position: fixed !important; bottom: 30px !important; right: 30px !important; z-index: 2147483647 !important; background: #111 !important; border: 1px solid #333 !important; border-radius: 16px !important; padding: 20px !important; box-shadow: 0 10px 40px rgba(0,0,0,0.8) !important; color: #fff !important; min-width: 200px !important; font-family: sans-serif !important; display: block !important;">
-			<div style="font-size: 10px; color: #888; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 1px;">Credit Balance</div>
-			<div id="final-credits-display" style="font-size: 28px; font-weight: 800; color: #3b82f6; margin-bottom: 15px; line-height: 1;">-- c</div>
-			<button id="final-charge-btn" style="cursor: pointer !important; display: block !important; width: 100% !important; text-align: center !important; background: #3b82f6 !important; color: white !important; padding: 12px 0 !important; border-radius: 10px !important; border: none !important; font-size: 14px !important; font-weight: 700;">チャージする</button>
+		<!-- 2. 右下の物理的なクレジット表示ウィジェット（最初から表示させておく） -->
+		<div id="final-widget-fixed" 
+			onmouseover="this.style.right='20px'; this.style.opacity='1'; this.style.width='220px';"
+			onmouseout="this.style.right='-170px'; this.style.opacity='0.6'; this.style.width='220px';"
+			style="position: fixed !important; bottom: 30px !important; right: -170px !important; width: 220px !important; z-index: 2147483647 !important; background: rgba(17, 17, 17, 0.9) !important; backdrop-filter: blur(10px); border: 1px solid #333 !important; border-radius: 16px !important; padding: 15px !important; box-shadow: 0 10px 40px rgba(0,0,0,0.6) !important; color: #fff !important; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); opacity: 0.6; cursor: default;">
+			
+			<div style="display: flex; align-items: center; gap: 10px;">
+				<span style="font-size: 18px;">🪙</span>
+				<div>
+					<div style="font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 1px;">Credit Balance</div>
+					<div id="final-credits-display" style="font-size: 24px; font-weight: 800; color: #3b82f6; line-height: 1;">-- c</div>
+				</div>
+			</div>
+			
+			<div style="margin-top: 15px; border-top: 1px solid #222; padding-top: 12px;">
+				<button id="final-charge-btn" onclick="window.openPricingModal()" 
+					style="width: 100% !important; background: #3b82f6 !important; color: white !important; padding: 10px !important; border-radius: 10px !important; border: none !important; font-size: 13px !important; font-weight: 700; cursor: pointer !important;">
+					チャージする
+				</button>
+			</div>
 		</div>
 
 		<!-- 3. 表示を強制維持するスクリプト -->
@@ -239,7 +254,10 @@
 			(function() {
 				const W_ID = 'final-widget-fixed';
 				const S_URL = "https://buy.stripe.com/test_eVq7sNgH637d1NFefc2Ji00";
-				const API_URL = "https://n8n.hiroto99.com/webhook/a1e74358-e322-4805-ae83-84e611115199"; // 💡クレジット取得用API
+				const GET_API_URL = "https://n8n.hiroto99.com/webhook/a1e74358-e322-4805-ae83-84e611115199"; // 💡クレジット取得用API
+				const USE_API_URL = "https://n8n.hiroto99.com/webhook/7e983263-2397-42d6-ab7d-bce4e12f1e91"; // 💡クレジット消費用API
+				let creditsSave = null; // 💡 クレジットの最新値を保持する変数
+				window.hiroto99_is_locked = false; // 💡 windowに持たせて消失を防ぐ
 
 				async function refresh() {
 					const widget = document.getElementById(W_ID);
@@ -252,15 +270,17 @@
 					widget.style.setProperty('display', 'block', 'important');
 
 					try {
+						// 0. ログイン状態を確認
 						const token = localStorage.getItem('token');
 						if (!token) return; // ログイン前なら数値だけ -- c のまま
 
+						// 所持クレジットの表示
 						// 1. トークン(JWT)をデコードしてIDを取得
 						const user = JSON.parse(atob(token.split('.')[1]));
 						const userId = user.id;
 
 						// 2. Python API から最新の残高を取得（localStorageに頼らない）
-						const response = await fetch(API_URL, {
+						const response = await fetch(GET_API_URL, {
 							method: 'POST',
 							headers: { 'Content-Type': 'application/json' },
 							body: JSON.stringify({ user_id: userId })
@@ -275,6 +295,7 @@
 						const displayEl = document.getElementById('final-credits-display');
 						if (displayEl) displayEl.innerText = credits + " c";
 
+						// チャージ画面の有効化
 						document.getElementById('final-charge-btn').onclick = function() {
 							// 4. Stripeの料金表にIDを流し込む（重要：これで誰の決済か判別する）
 							const table = document.getElementById('my-stripe-table');
@@ -298,14 +319,285 @@
 								}
 							}
 
-							// 6. モーダルをふわっと表示
+							// 6. モーダルをふわっと表示n 
 							document.getElementById('pricing-modal').style.display = 'flex';
 						};
+
+						// 送信ボタンの制限
+						// 7. モデルの大きさを取得して消費量を計算
+						const modelName = getCurrentModel(); // 画面からモデル名を取得する関数
+						
+						// 文字列が存在する場合のみ判定（includesやindexOfのエラーを防ぐ）
+						if (modelName && modelName.length > 0) {
+							const cost = calculateCost(modelName); // 消費クレジットの設定
+
+							// 8. 送信ボタンの物理的制限(モデル名が存在するときのみ、includesのエラー回避)
+							const sendBtn = document.getElementById('send-message-button');
+							if (sendBtn) {
+								// 💡 モデルに応じた消費クレジットを判定
+								if (credits < cost) {
+									// 🔴 クレジット不足時の設定
+									// 1. ボタンを物理的に無効化（Edgeの標準機能）
+									sendBtn.disabled = true;
+									sendBtn.style.pointerEvents = "none"; // マウス反応を消す
+									sendBtn.style.opacity = "0.4";
+
+									// 2. 既存の「送信イベント」をすべてキャンセルして上書きする（キャプチャフェーズで阻止）
+									sendBtn.addEventListener('click', function(e) {
+										e.stopImmediatePropagation(); // 他のスクリプト（Open WebUI側）にイベントを渡さない
+										e.preventDefault();           // 標準の送信動作を止める
+										console.log("[hiroto99.com] Related Question Blocked: Insufficient Credits");
+										
+										// 💡 ここで料金プラン画面を出す
+										forceOpenPricing(cost);
+									}, true); // 第3引数を true にして優先度を最上位にする
+
+									sendBtn.setAttribute('title', `残高不足（必要: ${cost}c）。クリックしてチャージ。`);
+								} else {
+									// 🔵 通常時の設定
+									sendBtn.disabled = false;
+									sendBtn.style.pointerEvents = "auto";
+									sendBtn.style.opacity = "1";
+									
+									// 💡 ホバー時のメッセージを通常の送信ラベルに戻す
+									sendBtn.setAttribute('title', `メッセージを送信 (${cost}c 消費)`);
+									sendBtn.setAttribute('aria-label', 'Send Message');
+								}
+							}
+
+							/* --- エンターキー送信の強制課金（Shift+Enterは除外） --- */
+							window.addEventListener('keydown', function(e) {
+								// 1. Enter以外のキー、または「改行操作」の場合は即終了（スルー）
+								// 💡Shift + Enter を改行として扱う
+								if (e.key !== 'Enter' || e.metaKey || e.shiftKey) {
+									return; 
+								}
+
+								// 2. ストッパー発動中なら、送信動作そのものを完全に殺す
+								if (window.hiroto99_is_locked) {
+									e.stopImmediatePropagation();
+									e.preventDefault();
+									return false;
+								}
+
+								// 3. 入力欄（textarea）での確定Enter操作か確認
+								const isChatInput = e.target.tagName === 'TEXTAREA' || e.target.id === 'chat-input';
+
+								if (isChatInput) {
+									// 4. 残高不足チェック
+									if (credits < cost) {
+										e.stopImmediatePropagation();
+										e.preventDefault();
+										console.log("[hiroto99.com] Enter blocked: Need " + cost + "c");
+										forceOpenPricing(cost); 
+										return false;
+									}
+
+									// 5. 💡 ストッパー発動（0.8秒間ロック）
+									window.hiroto99_is_locked = true;
+									
+									// n8nへ減算リクエストを実行
+									console.log("[hiroto99.com] Valid Enter Send. Consuming " + cost + "c...");
+									consumeCreditsViaN8n(cost);
+
+									// 6. ロック解除
+									setTimeout(() => {
+										window.hiroto99_is_locked = false;
+									}, 800);
+								}
+							}, true); // Capture phase (最優先)
+						}
+						saveCredits(credits); // 💡 最新のクレジットをセーブ
 					} catch (e) { console.error("Update Error:", e); }
 				}
 
-				// 0.5秒おきに監視と更新
-				setInterval(refresh, 500);
+				function getCurrentModel() {
+					let modelName = "";
+					try {
+						// 💡 共有いただいたHTML構成をピンポイントで狙う
+						const modelDiv = document.querySelector('div.flex.w-full.text-left.truncate.text-lg.justify-between');
+						
+						// 存在チェックとテキストの有無を確認
+						if (modelDiv && modelDiv.innerText) {
+							modelName = String(modelDiv.innerText).trim().toLowerCase();
+						}
+					} catch (e) {
+						console.warn("Model div not found yet...");
+					}
+					
+					// 見つからない場合は空文字を返す（toLowerCaseのエラーを防ぐ）
+					return modelName || "";
+				}
+
+				function setupChatMonitor() {
+					const sendBtn = document.getElementById('send-message-button');
+					if (sendBtn && !sendBtn.dataset.hooked) {
+						sendBtn.dataset.hooked = "true";
+						
+						// 元のクリック動作を邪魔しないように監視
+						sendBtn.addEventListener('click', async () => {
+							consumeCreditsViaN8n();
+						});
+					}
+				}
+
+				/* --- 関連会話（Related Questions）の鉄壁ガード --- */
+				function setupRelatedQuestionMonitor() {
+					/* --- 100% 重複課金を防ぐグローバル・ストッパー --- */
+					window.addEventListener('click', function(e) {
+						// 1. ロック中なら、このクリックは「無かったこと」にする
+						if (window.hiroto99_is_locked) {
+							console.log("[hiroto99.com] Duplicate click blocked by Stopper.");
+							return false;
+						}
+
+						const target = e.target;
+						// 課金対象の判定（削除ボタン等は除外）
+						const isRelated = target.closest('.cursor-pointer.flex.items-center.gap-2.text-gray-500');
+						const isDelete = target.closest('button[aria-label*="Delete"]') || target.closest('.delete-btn');
+
+						if (isRelated && !isDelete) {
+							const cost = calculateCost(getCurrentModel());
+							const credits = loadCredits();
+
+							// 残高不足チェック
+							if (credits < cost) {
+								e.stopImmediatePropagation();
+								e.preventDefault();
+								forceOpenPricing(cost);
+								return false;
+							}
+
+							// 💡 ストッパー発動！
+							window.hiroto99_is_locked = true;
+							console.log("[hiroto99.com] Processing... Stopper LOCKED.");
+
+							// n8nへ減算リクエスト
+							consumeCreditsViaN8n(cost);
+
+							// 💡 0.8秒後にロック解除（連打やイベントの重複を完全に吸収）
+							setTimeout(() => {
+								window.hiroto99_is_locked = false;
+								console.log("[hiroto99.com] Stopper UNLOCKED.");
+							}, 800);
+						}
+					}, true); // Capture phase (最優先)
+				}
+
+				function setupSuggestionMonitor() {
+					// 💡 提案ボタン (waterfall) のクリック監視と強制課金
+					const waterfallBtns = document.querySelectorAll('button[role="listitem"].waterfall');
+					waterfallBtns.forEach(btn => {
+						// 二重登録防止
+						if (!btn.dataset.hooked) {
+							btn.dataset.hooked = "true";
+
+							// 💡 Captureフェーズ(true)で割り込み、Open WebUIのチャット開始処理を阻止する
+							btn.addEventListener('click', function(e) {
+								const credits = loadCredits();
+								const cost = calculateCost(getCurrentModel());
+
+								if (credits < cost) {
+									// 🔴 残高不足：イベントを完全に停止し、料金プランを叩きつける
+									e.stopImmediatePropagation();
+									e.preventDefault();
+											
+									console.log("[hiroto99.com] Waterfall Suggestion Blocked: Insufficient Credits");
+									forceOpenPricing(cost); // 💡 作成済みの強制表示メソッド
+									return false;
+								}
+
+								// 🔵 残高あり：n8nへ消費リクエストを飛ばす
+								console.log("[hiroto99.com] Waterfall Suggestion Accepted. Consuming " + cost + "c");
+								consumeCreditsViaN8n(cost);
+							}, true); 
+						}
+					});
+				}
+
+				async function consumeCreditsViaN8n() {
+					console.log("Chat Message Detected. Calling n8n...");
+					
+					const token = localStorage.getItem('token');
+					if (!token) return;
+					const userId = JSON.parse(atob(token.split('.')[1])).id;
+
+					// 💡 モデル名を画面から取得（Open WebUIのヘッダー等にあるモデル名）
+					const modelName = getCurrentModel();
+					
+					try {
+						const response = await fetch(USE_API_URL, {
+							method: 'POST',
+							headers: { 'Content-Type': 'application/json' },
+							body: JSON.stringify({ user_id: userId, model_name: modelName })
+						});
+						
+						const result = await response.json();
+						
+						// 画面上の数値を即座に更新
+						const displayEl = document.getElementById('final-credits-display');
+						if (displayEl && result.credits !== undefined) {
+							displayEl.innerText = result.credits + " c";
+						}
+					} catch (e) {
+						console.error("N8N Consumption Error:", e);
+					}
+				}
+
+				//** 最新のクレジットをセーブする **//
+				function saveCredits(newCredits) {
+					creditsSave = newCredits;
+				};
+
+				//** 最新のクレジットをロードする **//
+				function loadCredits() {
+					return creditsSave;
+				};
+
+				//** クレジットを計算する関数 **//
+				function calculateCost(modelName) {
+					let cost = 1; // デフォルトの消費クレジット
+					if (modelName.includes('14b')) {
+						cost = 3;
+					} else if (modelName.includes('7b') || modelName.includes('8b') || modelName.includes('latest')) {
+						cost = 2;
+					}
+					return cost;
+				}
+
+				function forceOpenPricing(required) {
+					console.log(`[hiroto99.com] Access Denied: Need ${required}c. Launching Pricing Table.`);
+							
+					// 1. 料金表に最新のユーザーIDを注入（以前の成功ロジック）
+					const token = localStorage.getItem('token');
+					if (token) {
+						const payload = JSON.parse(atob(token.split('.')[1]));
+						const table = document.getElementById('hiroto99-pricing-table');
+						if (table) {
+							table.setAttribute('client-reference-id', payload.id);
+						}
+					}
+
+					// 2. モーダルを「最前面」に「強制表示」
+					const modal = document.getElementById('pricing-modal');
+					if (modal) {
+						modal.style.display = 'flex';
+						modal.style.opacity = '1';
+						modal.style.visibility = 'visible';
+						modal.style.zIndex = '2147483647'; // 物理的限界値
+					}
+
+					// 3. ユーザーへの通知（お好みで）
+					// alert(`クレジットが不足しています（必要: ${required}c）。チャージしてください。`);
+				};
+
+				// 送信ボタンの監視
+				setInterval(() => {
+					refresh();                     // 残高表示更新 & ボタンの物理無効化
+					setupChatMonitor();            // メイン送信ボタン(id=send-message-button)監視
+					setupRelatedQuestionMonitor(); // 関連質問(cursor-pointer)監視
+					setupSuggestionMonitor();      // 💡 提案ボタン(waterfall)監視を追加
+				}, 1000);
 				refresh();
 			})();
 		</script>
